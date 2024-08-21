@@ -1,6 +1,7 @@
 const { default: mongoose } = require("mongoose");
 
 const courseScheme = new mongoose.Schema({
+    
     title: {
         type: String,
         required: true

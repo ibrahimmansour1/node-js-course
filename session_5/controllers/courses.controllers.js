@@ -1,53 +1,69 @@
 const { validationResult } = require("express-validator")
 const Course = require('../models/course.model');
-const httpStatusText = require('../utils/httpStatusText.js')
-const getAllCourses = async (req, res) => {
+const httpStatusText = require('../utils/httpStatusText.js');
+const asyncWrapper = require("../middlewares/asyncWrapper.js");
+const appError = require("../utils/appError.js")
+const mongoose = require('mongoose')
+
+const getAllCourses = asyncWrapper(async (req, res, next) => {
+    const query = req.query;
+    const limit = query.limit || 10;
+    const page = query.page || 1;
+    const skip = (page - 1) * limit
     // get all courses from db using course model
-    const courses = await Course.find();
+    const courses = await Course.find({}, { "__v": false }).limit(limit).skip(skip);
     res.json({ status: httpStatusText.SUCCESS, data: { courses } })
-}
+});
 
-const getCourse = async (req, res) => {
-    try {
-        console.log("req.param", req.params.courseID)
-        const course = await Course.findById(req.params.courseID)
-        if (!course) {
-            return res.status(404).json({ status: httpStatusText.FAIL, data: { course: "Course not found" } });
+const getCourse =
+    asyncWrapper(
+        async (req, res, next) => {
+            const courseID = req.params.courseID;
+            if (!mongoose.Types.ObjectId.isValid(courseID)) {
+                const error = appError.create('Invalid course ID', 400, httpStatusText.FAIL);
+                return next(error);
+            }
+            const course = await Course.findById(req.params.courseID);
+            if (!course) {
+                const error = appError.create('Course not found', 404, httpStatusText.FAIL);
+                return next(error);
+            }
+            res.json({ status: httpStatusText.SUCCESS, data: { course } })
         }
-        res.json({ status: httpStatusText.SUCCESS, data: { course } })
-    } catch (error) {
-        return res.status(400).json({ status: httpStatusText.ERROR, data: null, message: "Invalid Object Id", code: 400, });
-    }
-}
+    )
 
-const createCourse = async (req, res) => {
-    console.log(req.body);
+
+const createCourse = asyncWrapper(async (req, res, next) => {
     const errors = validationResult(req);
-    console.log("errors", errors);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ status: httpStatusText.FAIL, data: errors.array() })
+        const error = appError.create(errors.array(), 400, httpStatusText.FAIL)
+        return next(error)
 
     }
     const newCourse = new Course(req.body);
     await newCourse.save();
     res.status(201).json({ status: httpStatusText.SUCCESS, data: { course: newCourse } });
-}
+})
 
-const updateCourse = async (req, res) => {
+const updateCourse = asyncWrapper(async (req, res, next) => {
     const courseID = req.params.courseID;
-    try {
-        const updatedCourse = await Course.updateOne({ _id: courseID }, { $set: { ...req.body } });
-        res.status(200).json(updatedCourse);
-    } catch (error) {
-        return res.status(400).json({ error: error });
+    if (!mongoose.Types.ObjectId.isValid(courseID)) {
+        const error = appError.create('Invalid course ID', 400, httpStatusText.FAIL);
+        return next(error);
     }
-}
+    const updatedCourse = await Course.updateOne({ _id: courseID }, { $set: { ...req.body } });
+    res.status(200).json({ status: httpStatusText.SUCCESS, data: { course: updatedCourse } });
+})
 
-const deleteCourse = async (req, res) => {
+const deleteCourse = asyncWrapper(async (req, res, next) => {
     const courseID = req.params.courseID;
-    const course = await Course.deleteOne({ _id: courseID });
+    if (!mongoose.Types.ObjectId.isValid(courseID)) {
+        const error = appError.create('Invalid course ID', 400, httpStatusText.FAIL);
+        return next(error);
+    }
+    await Course.deleteOne({ _id: req.params.courseID });
     res.status(200).json({ status: httpStatusText.SUCCESS, data: null });
-}
+})
 
 module.exports = {
     getAllCourses,
